@@ -1,16 +1,24 @@
-package com.jimi.chatting.config;
+package com.jimi.chatting.redisConfig;
 
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.cluster.RedisClusterClient;
 import io.lettuce.core.event.EventBus;
 import io.lettuce.core.event.connection.DisconnectedEvent;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import io.lettuce.core.resource.ClientResources;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
+@Configuration
 public class ShardedPubSubManager implements AutoCloseable {
 
     private final RedisClusterClient client;
@@ -19,8 +27,8 @@ public class ShardedPubSubManager implements AutoCloseable {
 
     private final Set<String> subscribedChannels = ConcurrentHashMap.newKeySet();
 
-    public ShardedPubSubManager(String redisUri) {
-        this.client = RedisClusterClient.create(redisUri);
+    public ShardedPubSubManager(@Value("${chat.redis.cluster.nodes}") List<String> nodes) {
+        this.client = RedisClusterClient.create((RedisURI) nodes);
         this.connection = client.connectPubSub();
 
         connection.addListener(new RedisPubSubListenerImpl(channelSinks));
@@ -36,10 +44,12 @@ public class ShardedPubSubManager implements AutoCloseable {
     }
 
     // 채널 구독
-    public void subscribeChannel(String channel) {
+    public Mono<Void> subscribeChannel(String channel) {
         channelSinks.computeIfAbsent(channel, ch -> Sinks.many().multicast().onBackpressureBuffer());
-        connection.reactive().subscribe(channel).subscribe();
-        subscribedChannels.add(channel);
+        return connection.reactive()
+                .psubscribe(channel)
+                .doOnSuccess(v -> subscribedChannels.add(channel))
+                .doOnError(err -> log.error("Subscribe error", err));
     }
 
     // 메시지 발행
@@ -53,7 +63,7 @@ public class ShardedPubSubManager implements AutoCloseable {
     }
 
     public Flux<String> messageStream(String channel) {
-        return channelSinks.get(channel).asFlux();
+        return channelSinks.computeIfAbsent(channel, ch -> Sinks.many().multicast().onBackpressureBuffer()).asFlux();
     }
 
     @Override

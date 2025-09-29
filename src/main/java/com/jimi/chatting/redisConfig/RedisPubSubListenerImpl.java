@@ -1,4 +1,4 @@
-package com.jimi.chatting.config;
+package com.jimi.chatting.redisConfig;
 
 import io.lettuce.core.pubsub.RedisPubSubListener;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,6 @@ public record RedisPubSubListenerImpl(
 
     @Override
     public void message(String pattern, String channel, String message) {
-
     }
 
     @Override
@@ -31,16 +30,13 @@ public record RedisPubSubListenerImpl(
 
     @Override
     public void psubscribed(String pattern, long count) {
-
     }
 
     @Override
     public void unsubscribed(String channel, long count) {
-
     }
 
     @Override
     public void punsubscribed(String pattern, long count) {
-
     }
 }
